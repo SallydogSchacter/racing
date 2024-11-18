@@ -2,16 +2,57 @@ import pygame
 import math
 import pandas as pd
 import numpy as np
-from scipy.interpolate import splprep, splev
+from scipy.interpolate import interp1d
 
 
-# Initialize Pygame
-pygame.init()
+def interpolate_points(points, num_points):
+    # Convert points to numpy array
+    points = np.array(points)
 
-# Set up the window dimensions
-width, height = 1200, 800
-screen = pygame.display.set_mode((width, height))
-pygame.display.set_caption("JAI HIND")
+    # Calculate cumulative distances along the contour
+    distances = np.sqrt(np.sum(np.diff(points, axis=0) ** 2, axis=1))
+    cumulative_distances = np.insert(np.cumsum(distances), 0, 0)
+
+    # Normalize cumulative distances
+    total_distance = cumulative_distances[-1]
+    normalized_distances = cumulative_distances / total_distance
+
+    # Interpolate x and y coordinates based on normalized distances
+    interp_func_x = interp1d(normalized_distances, points[:, 0], kind='linear')
+    interp_func_y = interp1d(normalized_distances, points[:, 1], kind='linear')
+
+    # Generate evenly spaced points
+    even_spaced = np.linspace(0, 1, num_points)
+    new_points = [(int(interp_func_x(t)), int(interp_func_y(t))) for t in even_spaced]
+
+    return new_points
+
+
+def find_closest_point(point, points):
+    min_distance = float('inf')
+    closest_point = None
+    for p in points:
+        distance = math.dist(point, p)
+        if distance < min_distance:
+            min_distance = distance
+            closest_point = p
+    return closest_point
+
+
+def draw_reward_lines(screen, outer_points, inner_points, num_lines, line_color):
+    # Interpolate points to get evenly spaced coordinates
+    segments = []
+    outer_interp = interpolate_points(outer_points, num_lines)
+    inner_interp = interpolate_points(inner_points, num_lines)
+
+    # Draw lines between the interpolated outer and inner points
+    for outer_point in outer_interp:
+        closest_inner_point = find_closest_point(outer_point, inner_interp)
+        if closest_inner_point:
+            pygame.draw.line(screen, line_color, outer_point, closest_inner_point, 2)
+            segments.append([outer_point,closest_inner_point])
+    return(segments)
+
 
 # Colors
 BLACK = (0, 0, 0)
@@ -64,120 +105,82 @@ def load_contour(file_path):
 walls_ins = [Wall(x1, y1, x2, y2) for x1, y1, x2, y2 in load_contour(ins)]
 walls_out = [Wall(x1, y1, x2, y2) for x1, y1, x2, y2 in load_contour(outs)]
 
+def distance(x1, y1, x2, y2):
+    """Calculate Euclidean distance between two points."""
+    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+def scale_outer_wall(walls_ins, walls_out, scale_factor=2):
+    scaled_walls_out = []
+
+    # Convert inner wall points to a list of tuples for easy distance calculation
+    ins_coords = [(wall.x1, wall.y1) for wall in walls_ins] + [(wall.x2, wall.y2) for wall in walls_ins]
+
+    for wall in walls_out:
+        x1_out, y1_out, x2_out, y2_out = wall.x1, wall.y1, wall.x2, wall.y2
+
+        def scale_point(x_out, y_out):
+            # Step 2: Find the closest point on the inner wall
+            closest_point = min(ins_coords, key=lambda p: distance(x_out, y_out, p[0], p[1]))
+            x_in, y_in = closest_point
+
+            # Step 3: Calculate the direction vector from inner to outer point
+            dx = x_out - x_in
+            dy = y_out - y_in
+
+            # Step 4: Calculate the new scaled outer point
+            x_scaled = x_in + dx * scale_factor
+            y_scaled = y_in + dy * scale_factor
+
+            return int(x_scaled), int(y_scaled)
+
+        # Scale both endpoints of the wall segment
+        new_x1_out, new_y1_out = scale_point(x1_out, y1_out)
+        new_x2_out, new_y2_out = scale_point(x2_out, y2_out)
+
+        # Step 5: Create a new Wall object with the scaled points
+        scaled_walls_out.append(Wall(new_x1_out, new_y1_out, new_x2_out, new_y2_out))
+
+    return scaled_walls_out
+
+# Example usage:
+walls_ins = scale_outer_wall(walls_out, walls_ins, scale_factor=2)
+
 # Function to calculate the perpendicular offset
-def get_offset_point(x1, y1, x2, y2, distance):
-    # Calculate the angle of the line
-    angle = math.atan2(y2 - y1, x2 - x1)
-
-    # Calculate the offset direction (perpendicular to the line)
-    offset_x = -distance * math.sin(angle)
-    offset_y = distance * math.cos(angle)
-
-    # Apply the offset to the points
-    return (x1 + offset_x, y1 + offset_y), (x2 + offset_x, y2 + offset_y)
-
-
 # Define margin
 MARGIN = 10
 
+WI = []
+for j in range(len(walls_ins)):
+    WI.append((walls_ins[j].x1,walls_ins[j].y1))
+    WI.append((walls_ins[j].x2, walls_ins[j].y2))
 
-CAR_COLOR = (0, 255, 0)
-CAR_WIDTH,CAR_HEIGHT = 3,6
-class Car:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.angle = 0  # Facing right initially
-        self.speed = 0
-        self.max_speed = 10
-        self.min_speed = 0
-        self.acceleration = 0.2
-        self.brake_deceleration = 0.5
-        self.turn_speed = 5
-        self.image = pygame.Surface((CAR_WIDTH, CAR_HEIGHT))
-        self.image.fill(CAR_COLOR)
-        self.rect = self.image.get_rect(center=(self.x, self.y))
+WO = []
+for j in range(len(walls_out)):
+    WO.append([walls_out[j].x1,walls_out[j].y1])
+    WO.append([walls_out[j].x2, walls_out[j].y2])
 
-    def update(self, action):
-        # Parse the action
-        steer, accel = action
+# Initialize Pygame
+pygame.init()
 
-        # Steering
-        if steer == 1:  # Left
-            self.angle += self.turn_speed
-        elif steer == 2:  # Right
-            self.angle -= self.turn_speed
-
-        # Acceleration
-        if accel == 0:  # Brake
-            self.speed -= self.brake_deceleration
-        elif accel == 2:  # Accelerate
-            self.speed += self.acceleration
-
-        # Clamp speed
-        self.speed = max(self.min_speed, min(self.speed, self.max_speed))
-
-        # Update position
-        rad = math.radians(self.angle)
-        self.x += math.cos(rad) * self.speed
-        self.y -= math.sin(rad) * self.speed
-
-        # Update car rect
-        self.rect = self.image.get_rect(center=(self.x, self.y))
-
-    def draw(self, screen):
-        rotated_image = pygame.transform.rotate(self.image, self.angle)
-        new_rect = rotated_image.get_rect(center=self.rect.center)
-        screen.blit(rotated_image, new_rect.topleft)
-
-
-# Define discrete action space
-def get_action(action_index):
-    # Convert action index to (steer, accel)
-    steer = action_index // 3  # 0: straight, 1: left, 2: right
-    accel = action_index % 3  # 0: brake, 1: maintain, 2: accelerate
-    return steer, accel
-
-# Function to check for collision
-def check_collision(carx, cary, track_coords, threshold):
-    for (x, y) in track_coords:
-        distance = math.hypot(carx - x, cary - y)
-        if distance < threshold:
-            return True
-    return False
-
-START = (680,325)
-collision_threshold = 4
-
-track_points = outside_wall + list(reversed(inside_wall))
-
+# Set up the window dimensions
+width, height = 1600, 800
+screen = pygame.display.set_mode((width, height))
+pygame.display.set_caption("JAI HIND")
 # Main loop
 running = True
-car = Car(START[0],START[1])
+screen.fill(WHITE)
+for wall in walls_ins:
+    wall.draw(screen)
+pygame.draw.polygon(screen, ROAD_COLOR, WI)
+for wall1 in walls_out:
+    wall1.draw(screen)
+pygame.draw.polygon(screen, WHITE, WO)
+draw_reward_lines(screen, WO, WI, 200, (0, 0, 255))
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-
-    screen.fill(WHITE)
-    action_index = np.random.randint(0,8)  # Random action (1: straight, 2: accelerate)
-    action = get_action(action_index)
-    car.update(action)
-    carx = car.x
-    cary = car.y
-    pygame.draw.polygon(screen, ROAD_COLOR, track_points)
-    pygame.draw.polygon(screen, ROAD_COLOR, [(603,135),(608,135),(608,150)])
-    for wall in walls_ins:
-        wall.draw(screen)
-    for wall1 in walls_out:
-        wall1.draw(screen)
-    mouse_x, mouse_y = pygame.mouse.get_pos()
-    font = pygame.font.Font(None, 36)
-    coord_text = font.render(f"Mouse: ({mouse_x}, {mouse_y})", True, (0,0,0))
-    # Display the text on the screen
-    screen.blit(coord_text, (20, 20))
-    #state = state_gen(statex,statey)
-    car.draw(screen)
     pygame.display.flip()
 
 # Quit Pygame

@@ -1,4 +1,4 @@
-"""import cv2
+import cv2
 import numpy as np
 
 # Step 1: Load the Image
@@ -82,7 +82,7 @@ output_file = "resized_track_coordinates.txt"  # Output file for resized coordin
 # Original and target sizes
 original_width = 1200
 original_height = 800
-target_width = 1200
+target_width = 1600
 target_height = 800
 
 # Scaling factor for y-coordinate (since width is unchanged)
@@ -106,5 +106,3 @@ with open(output_file, "w") as outfile:
         outfile.write(f"{resized_x}, {resized_y}\n")
 
 print(f"Resized coordinates saved to '{output_file}'")
-
-"""
