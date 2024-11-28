@@ -192,7 +192,8 @@ def scale_outer_wall(walls_ins, walls_out, scale_factor=2):
 
     return scaled_walls_out
 
-walls_ins = scale_outer_wall(walls_out, walls_ins, scale_factor=1.5)
+walls_ins = scale_outer_wall(walls_out, walls_ins, scale_factor=1.9)
+walls_out = scale_outer_wall(walls_ins, walls_out, scale_factor=1.1)
 
 MARGIN = 10
 
