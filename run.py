@@ -19,8 +19,8 @@ dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilo
 ddqn_scores = []
 eps_history = []
 
-def run():
 
+def run():
     for e in range(N_EPISODES):
         
         game.reset() #reset env 
@@ -38,14 +38,12 @@ def run():
 
         if e % 10 == 0 and e > 0: # render every 10 episodes
             renderFlag = True
-
         while not done:
-            
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: 
                     return
-
             action = dqn_agent.choose_action(observation)
+
             observation_, reward, done = game.step(action)
             observation_ = np.array(observation_)
 
@@ -58,7 +56,6 @@ def run():
                 counter = 0
 
             score += reward
-
             dqn_agent.remember(observation, action, reward, observation_, int(done))
             observation = observation_
             dqn_agent.learn()
@@ -82,6 +79,6 @@ def run():
         print('episode: ', e,'score: %.2f' % score,
               ' average score %.2f' % avg_score,
               ' epsilon: ', dqn_agent.epsilon,
-              ' memory size', dqn_agent.memory.mem_cntr % dqn_agent.memory.mem_size)   
+              ' memory size', dqn_agent.memory.mem_cntr % dqn_agent.memory.mem_size)
 
-run()        
+run()
