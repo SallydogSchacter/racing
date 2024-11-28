@@ -49,7 +49,7 @@ cv2.destroyAllWindows()
 
 # Step 8: Filter Contours (If Needed)
 # For testing, remove area filtering and see if the contours are useful
-filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 500]  # Increase the threshold as needed
+filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 10000]  # Increase the threshold as needed
 
 # If filtering results in no contours, print a message and proceed to the next step
 if len(filtered_contours) == 0:
