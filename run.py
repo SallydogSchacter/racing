@@ -120,7 +120,6 @@ def run():
               ' epsilon: ', dqn_agent.epsilon,
               ' memory size', dqn_agent.memory.mem_cntr % dqn_agent.memory.mem_size)
 
-
         # print(
         #     f"Episode {e}: Max step time - {max_step} ({max_time:.4f} seconds)"
         # )
