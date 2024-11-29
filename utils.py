@@ -55,3 +55,28 @@ def rotate_rect(pt1, pt2, pt3, pt4, angle):
     pt4 = rotate(pt_center,pt4,angle)
 
     return pt1, pt2, pt3, pt4
+
+def line_intersection(line1, line2):
+    """
+    Check if two lines intersect.
+
+    Args:
+        line1: Line object.
+        line2: Line object.
+
+    Returns:
+        True if the lines intersect, False otherwise.
+    """
+    x1, y1 = line1.pt1.x, line1.pt1.y
+    x2, y2 = line1.pt2.x, line1.pt2.y
+    x3, y3 = line2.pt1.x, line2.pt1.y
+    x4, y4 = line2.pt2.x, line2.pt2.y
+
+    denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if denominator == 0:
+        return False  # Lines are parallel or coincident
+
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator
+    u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator
+
+    return 0 <= t <= 1 and 0 <= u <= 1

@@ -2,86 +2,127 @@ import game_env
 import pygame
 import numpy as np
 from dqn import DQNAgent
+import time  # Import the time module
 
-TOTAL_GAMETIME = 1000 # Max game time for one episode
+TOTAL_GAMETIME = 1000  # Max game time for one episode
 N_EPISODES = 10000
 REPLACE_TARGET = 50
 
-game = game_env.RacingEnv()
-game.fps = 60
+PENALTY = 100
 
-GameTime = 0 
+NUM_CARS = 3  # Number of cars in the environment
+
+game = game_env.RacingEnv(num_cars=NUM_CARS)
+game.fps = 120
+
+GameTime = 0
 GameHistory = []
 renderFlag = False
-
-dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilon_end=0.10, epsilon_dec=0.9995, replace_target= REPLACE_TARGET, batch_size=512, input_dims=19)
-
+dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilon_end=0.10, epsilon_dec=0.9995, replace_target=REPLACE_TARGET, batch_size=512, input_dims=19)
 ddqn_scores = []
 eps_history = []
 
 def run():
-
     for e in range(N_EPISODES):
         
-        game.reset() #reset env 
+        # Dictionary to track step times
+        step_times = {
+            "Game Reset": 0,
+            "Initial Observation/Reward": 0,
+            "Action Selection": 0,
+            "Environment Step": 0,
+            "Memory Update": 0,
+            "Learning": 0,
+        }
 
-        done = False
-        score = 0
-        counter = 0
-        
-        observation_, reward, done = game.step(0)
-        observation = np.array(observation_)
+        game_reset_time = time.time()
+        game.reset()
+        step_times["Game Reset"] = time.time() - game_reset_time
 
-        gtime = 0 # set game time back to 0
-        
-        renderFlag = False # if you want to render every episode set to true
+        # Initialize car states
+        active_cars = [True] * NUM_CARS  # Track which cars are still active
+        scores = [0] * NUM_CARS  # Scores for all cars
+        counter = [0] * NUM_CARS  # Step counters for all cars
 
-        if e % 10 == 0 and e > 0: # render every 10 episodes
-            renderFlag = True
+        observations, rewards, dones = game.step([0] * NUM_CARS)  # Initial actions for all cars
+        prev_observations = [np.array(obs) if active_cars[i] else None for i, obs in enumerate(observations)]
 
-        while not done:
-            
+        gtime = 0  # Set game time back to 0
+
+        while any(active_cars):  # Run until all cars are done
             for event in pygame.event.get():
-                if event.type == pygame.QUIT: 
+                if event.type == pygame.QUIT:
                     return
 
-            action = dqn_agent.choose_action(observation)
-            observation_, reward, done = game.step(action)
-            observation_ = np.array(observation_)
-
-            # This is a countdown if no reward is collected the car will be done within 100 ticks
-            if reward == 0:
-                counter += 1
-                if counter > 100:
-                    done = True
-            else:
-                counter = 0
-
-            score += reward
-
-            dqn_agent.remember(observation, action, reward, observation_, int(done))
-            observation = observation_
-            dqn_agent.learn()
+            action_time = time.time()
+            actions = [
+                dqn_agent.choose_action(prev_observations[i]) if active_cars[i] else 0 for i in range(NUM_CARS)
+            ]
             
+            step_times["Action Selection"] += time.time() - action_time
+
+            step_time = time.time()
+            observations, rewards, dones = game.step(actions)
+            observations = [
+                np.array(observations[i]) if active_cars[i] else None for i in range(NUM_CARS)
+            ]
+            step_times["Environment Step"] = time.time() - step_time
+
+            # Update scores and counters for active cars
+            for i in range(NUM_CARS):
+                if not active_cars[i]:
+                    continue  # Skip cars that are no longer active
+                if dones[i]:  # If the car is done, it crashed
+                    active_cars[i] = False  # Mark car as inactive
+                elif rewards[i] == 0:
+                    counter[i] += 1
+                    if counter[i] > 100:  # If car is idle for too long
+                        scores[i] -= PENALTY
+                        active_cars[i] = False  # Mark car as inactive
+                else:
+                    counter[i] = 0
+                scores[i] += rewards[i]
+
+                remember_time = time.time()
+                dqn_agent.remember(
+                    prev_observations[i], actions[i], rewards[i], observations[i], int(dones[i])
+                )
+                step_times["Memory Update"] += time.time() - remember_time
+
+                learn_time = time.time()
+                dqn_agent.learn()
+                step_times["Learning"] += time.time() - learn_time
+
+            # Update the game time
             gtime += 1
 
+            # End the episode if the max time is reached
             if gtime >= TOTAL_GAMETIME:
-                done = True
+                break
 
-            if renderFlag:
-                game.render(action)
+            # Render the game
+            game.render(actions)
 
+        # Track epsilon and main car's score
         eps_history.append(dqn_agent.epsilon)
-        ddqn_scores.append(score)
-        avg_score = np.mean(ddqn_scores[max(0, e-100):(e+1)])
-
+        ddqn_scores.append(scores[0])
+        avg_score = np.mean(ddqn_scores[max(0, e - 100):(e + 1)])
+        
         if e % 10 == 0 and e > 10:
             dqn_agent.save_model("model_weights")
-            print("save model")
-            
-        print('episode: ', e,'score: %.2f' % score,
+
+        # Find the step with the maximum time
+        max_step = max(step_times, key=step_times.get)
+        max_time = step_times[max_step]
+        
+        print('episode: ', e,'score: %.2f' % scores[0],
               ' average score %.2f' % avg_score,
               ' epsilon: ', dqn_agent.epsilon,
-              ' memory size', dqn_agent.memory.mem_cntr % dqn_agent.memory.mem_size)   
+              ' memory size', dqn_agent.memory.mem_cntr % dqn_agent.memory.mem_size)
 
-run()        
+
+        # print(
+        #     f"Episode {e}: Max step time - {max_step} ({max_time:.4f} seconds)"
+        # )
+
+run()

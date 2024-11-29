@@ -1,113 +1,88 @@
 import pygame
-
+import math
 class Wall:
-    def __init__(self, x1, y1, x2, y2):
-        self.x1 = x1
-        self.y1 = y1
-        self.x2 = x2
-        self.y2 = y2
+    def __init__(self, x1, y1, x2, y2, color=(255, 0, 0), thickness=5):
+        self.x1, self.y1 = x1, y1
+        self.x2, self.y2 = x2, y2
+        self.color = color
+        self.thickness = thickness
+
+    def draw(self, screen):
+        # Draw the wall as a line between (x1, y1) and (x2, y2)
+        pygame.draw.line(screen, self.color, (self.x1, self.y1), (self.x2, self.y2), self.thickness)
+
+# Function to read the contour points from a file
+def load_contour(file_path):
+    coordinates = []
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        for i in range(len(lines)):
+            x1, y1 = map(int, lines[i].strip().split(','))
+            if i+1 >= len(lines):
+                second = 0
+            else:
+                second = i+1
+            x2, y2 = map(int, lines[second].strip().split(','))
+            coordinates.append((x1, y1, x2, y2))
+    return coordinates
+
+
+def distance(x1, y1, x2, y2):
+    """Calculate Euclidean distance between two points."""
+    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+def scale_point(x_out, y_out, ins_coords, scale_factor):
+    # Step 2: Find the closest point on the inner wall
+    closest_point = min(ins_coords, key=lambda p: distance(x_out, y_out, p[0], p[1]))
+    x_in, y_in = closest_point
+
+    # Step 3: Calculate the direction vector from inner to outer point
+    dx = x_out - x_in
+    dy = y_out - y_in
+
+    # Step 4: Calculate the new scaled outer point
+    x_scaled = x_in + dx * scale_factor
+    y_scaled = y_in + dy * scale_factor
+
+    return int(x_scaled), int(y_scaled)
+
+
+def scale_wall(walls_ins, walls_out, scale_factor=4):
+    scaled_walls_out = []
+
+    # Convert inner wall points to a list of tuples for easy distance calculation
+    ins_coords = [(wall.x1, wall.y1) for wall in walls_ins] + [(wall.x2, wall.y2) for wall in walls_ins]
+
+    for wall in walls_out:
+        x1_out, y1_out, x2_out, y2_out = wall.x1, wall.y1, wall.x2, wall.y2
+
+        # Scale both endpoints of the wall segment
+        new_x1_out, new_y1_out = scale_point(x1_out, y1_out, ins_coords, scale_factor)
+        new_x2_out, new_y2_out = scale_point(x2_out, y2_out, ins_coords, scale_factor)
+
+        # Step 5: Create a new Wall object with the scaled points
+        scaled_walls_out.append(Wall(new_x1_out, new_y1_out, new_x2_out, new_y2_out))
+
+    return scaled_walls_out
+
+def get_walls():
+    ins = "track_coordinates.txt"
+    inside_wall = []
+    with open(ins, "r") as file:
+        for line in file:
+            x, y = map(int, line.strip().split(", "))
+            inside_wall.append((x, y))
+    outs = "resized_track_coordinates.txt"
+    outside_wall = []
+    with open(outs, "r") as file:
+        for line in file:
+            x, y = map(int, line.strip().split(", "))
+            outside_wall.append((x, y))
+
+    # Create wall objects from contour points
+    walls_in = [Wall(x1, y1, x2, y2) for x1, y1, x2, y2 in load_contour(ins)]
+    walls_out = [Wall(x1, y1, x2, y2) for x1, y1, x2, y2 in load_contour(outs)]
     
-    def draw(self, win):
-        pygame.draw.line(win, (255,255,255), (self.x1, self.y1), (self.x2, self.y2), 5)
-
-def getWalls():
-    walls = []
-
-    wall1 = Wall(12, 451, 15, 130)
-    wall2 = Wall(15, 130, 61, 58)
-    wall3 = Wall(61, 58, 149, 14)
-    wall4 = Wall(149, 14, 382, 20)
-    wall5 = Wall(382, 20, 549, 31)
-    wall6 = Wall(549, 31, 636, 58)
-    wall7 = Wall(636, 58, 678, 102)
-    wall8 = Wall(678, 102, 669, 167)
-    wall9 = Wall(669, 167, 600, 206)
-    wall10 = Wall(600, 206, 507, 214)
-    wall11 = Wall(507, 214, 422, 232)
-    wall12 = Wall(422, 232, 375, 263)
-    wall13 = Wall(375, 263, 379, 283)
-    wall14 = Wall(379, 283, 454, 299)
-    wall15 = Wall(454, 299, 613, 286)
-    wall16 = Wall(613, 286, 684, 238)
-    wall17 = Wall(684, 238, 752, 180)
-    wall18 = Wall(752, 180, 862, 185)
-    wall19 = Wall(862, 185, 958, 279)
-    wall20 = Wall(958, 279, 953, 410)
-    wall21 = Wall(953, 410, 925, 505)
-    wall22 = Wall(925, 505, 804, 566)
-    wall23 = Wall(804, 566, 150, 570)
-    wall24 = Wall(150, 570, 46, 529)
-    wall25 = Wall(46, 529, 12, 451)
-    wall27 = Wall(104, 436, 96, 161)
-    wall28 = Wall(96, 161, 122, 122)
-    wall29 = Wall(122, 122, 199, 91)
-    wall30 = Wall(199, 91, 376, 94)
-    wall31 = Wall(376, 94, 469, 100)
-    wall32 = Wall(469, 100, 539, 102)
-    wall33 = Wall(539, 102, 585, 121)
-    wall34 = Wall(585, 121, 585, 139)
-    wall35 = Wall(585, 139, 454, 158)
-    wall36 = Wall(454, 158, 352, 183)
-    wall37 = Wall(352, 183, 293, 239)
-    wall38 = Wall(293, 239, 294, 318)
-    wall39 = Wall(294, 318, 361, 357)
-    wall40 = Wall(361, 357, 490, 373)
-    wall41 = Wall(490, 373, 671, 359)
-    wall42 = Wall(671, 359, 752, 300) #
-    wall43 = Wall(752, 300, 812, 310)#
-    wall44 = Wall(812, 310, 854, 369)
-    wall45 = Wall(854, 369, 854, 429)
-    wall46 = Wall(854, 429, 754, 483)
-    wall47 = Wall(754, 483, 192, 489)
-    wall48 = Wall(192, 489, 104, 436)
-
-    walls.append(wall1)
-    walls.append(wall2)
-    walls.append(wall3)
-    walls.append(wall4)
-    walls.append(wall5)
-    walls.append(wall6)
-    walls.append(wall7)
-    walls.append(wall8)
-    walls.append(wall9)
-    walls.append(wall10)
-    walls.append(wall11)
-    walls.append(wall12)
-    walls.append(wall13)
-    walls.append(wall14)
-    walls.append(wall15)
-    walls.append(wall16)
-    walls.append(wall17)
-    walls.append(wall18)
-    walls.append(wall19)
-    walls.append(wall20)
-    walls.append(wall21)
-    walls.append(wall22)
-    walls.append(wall23)
-    walls.append(wall24)
-    walls.append(wall25)
-
-    walls.append(wall27)
-    walls.append(wall28)
-    walls.append(wall29)
-    walls.append(wall30)
-    walls.append(wall31)
-    walls.append(wall32)
-    walls.append(wall33)
-    walls.append(wall34)
-    walls.append(wall35)
-    walls.append(wall36)
-    walls.append(wall37)
-    walls.append(wall38)
-    walls.append(wall39)
-    walls.append(wall40)
-    walls.append(wall41)
-    walls.append(wall42)
-    walls.append(wall43)
-    walls.append(wall44)
-    walls.append(wall45)
-    walls.append(wall46)
-    walls.append(wall47)
-    walls.append(wall48)
-
-    return(walls)
+    walls_in = scale_wall(walls_out, walls_in, scale_factor=1.9)
+    walls_out = scale_wall(walls_in, walls_out, scale_factor=1.2)
+    return walls_in + walls_out

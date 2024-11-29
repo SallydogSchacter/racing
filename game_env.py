@@ -1,32 +1,30 @@
 import pygame
 import math
-from walls import Wall, getWalls
-from goals import Goal, getGoals
-from utils import Point, Line, Ray, distance, rotate, rotate_rect
+from Walls import get_walls
+from goals import getGoals
+from utils import Point, Line, Ray, distance, rotate, rotate_rect, line_intersection
 
 GOALREWARD = 10
-LIFE_REWARD = -5
+LIFE_REWARD = 1
 PENALTY = -10
 
+starting_point = (665, 320)
+control_start = 1300
+
 class Car:
-    def __init__(self, x, y):
+    def __init__(self, x, y, color=(255, 0, 0)):
         self.position = Point(x, y)
-        self.width = 14
-        self.height = 30
+        self.width = 6
+        self.height = 15
         self.points = 0
+        self.color = color
 
-        # Load car image
-        self.original_image = pygame.image.load("assets/car.png").convert()
-        self.original_image.set_colorkey((0, 0, 0))
-        self.image = self.original_image
-        self.rect = self.image.get_rect(center=(x, y))
 
-        # Motion parameters
         self.angle = math.radians(180)
         self.target_angle = self.angle
         self.velocity = 0
         self.max_velocity = 15
-        self.acceleration = 1
+        self.acceleration = 5
 
         # Define corners of the car
         self.update_corners()
@@ -92,11 +90,7 @@ class Car:
         self.position.x += velocity_vector.x
         self.position.y += velocity_vector.y
 
-        self.rect.center = (self.position.x, self.position.y)
-
         self.update_corners()
-        self.image = pygame.transform.rotate(self.original_image, 90 - math.degrees(self.angle))
-        self.rect = self.image.get_rect(center=self.rect.center)
 
 
     def cast(self, walls):
@@ -185,6 +179,50 @@ class Car:
 
         return False
     
+    def collision_color(self, track_surface, cars):
+        # Define the car's edges as lines
+        car_lines = [
+            Line(self.p1, self.p2),
+            Line(self.p2, self.p3),
+            Line(self.p3, self.p4),
+            Line(self.p4, self.p1),
+        ]
+
+        for line in car_lines:
+            # Sample points along each line
+            num_samples = 10  # Number of points to sample along each edge
+            for i in range(num_samples + 1):
+                # Interpolate between the two points of the line
+                x = int(line.pt1.x + i * (line.pt2.x - line.pt1.x) / num_samples)
+                y = int(line.pt1.y + i * (line.pt2.y - line.pt1.y) / num_samples)
+
+                # Check if the point is within the bounds of the track surface
+                if 0 <= x < track_surface.get_width() and 0 <= y < track_surface.get_height():
+                    color = track_surface.get_at((x, y))[:3]  # Get RGB color at the point
+                    if color == (255, 255, 255):
+                        return True  # Collision detected
+        for car in cars:
+            # Skip self-check
+            if car == self:
+                continue
+            
+            other_car = car
+
+            other_car_lines = [
+                Line(other_car.p1, other_car.p2),
+                Line(other_car.p2, other_car.p3),
+                Line(other_car.p3, other_car.p4),
+                Line(other_car.p4, other_car.p1),
+            ]
+
+            # Check if any line of this car intersects with any line of the other car
+            for line in car_lines:
+                for other_line in other_car_lines:
+                    if line_intersection(line, other_line):
+                        return True
+
+        return False
+    
     def score(self, goal):
         forward_vector = rotate(Point(0, 0), Point(0, -50), self.angle)
         forward_line = Line(Point(self.position.x, self.position.y), Point(self.position.x + forward_vector.x, self.position.y + forward_vector.y))
@@ -219,7 +257,6 @@ class Car:
         return False
     
     def reset(self):
-        self.position = Point(50, 300)
         self.velocity = 0
         self.angle = math.radians(180)
         self.target_angle = self.angle
@@ -227,154 +264,147 @@ class Car:
         self.update_corners()
         self.rect = self.image.get_rect(center=(self.position.x, self.position.y))
 
-    def draw(self, win):
-        win.blit(self.image, self.rect)
+    def draw(self, screen):
+        # Draw the car as a rotated rectangle
+        pygame.draw.polygon(
+            screen, 
+            self.color, 
+            [(self.p1.x, self.p1.y), (self.p2.x, self.p2.y), (self.p3.x, self.p3.y), (self.p4.x, self.p4.y)]
+        )
 
 
 class RacingEnv:
-
-    def __init__(self):
+    def __init__(self, num_cars=1):
         pygame.init()
         self.font = pygame.font.Font(pygame.font.get_default_font(), 36)
 
         self.fps = 120
-        self.width = 1000
-        self.height = 600
-        self.history = []
+        self.width = 1600
+        self.height = 800
 
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("RACING DQN")
-        self.screen.fill((0,0,0))
-        self.back_image = pygame.image.load("assets/track.png").convert()
-        self.back_rect = self.back_image.get_rect().move(0, 0)
-        self.action_space = None
-        self.observation_space = None
-        self.game_reward = 0
-        self.score = 0
- 
+        self.track_surface = pygame.image.load("assets/yas_track.png").convert()
+        self.track_surface = pygame.transform.scale(self.track_surface, (self.width, self.height))
+
+        self.num_cars = num_cars
         self.reset()
 
-
     def reset(self):
-        self.screen.fill((0, 0, 0))
+        self.cars = [Car(starting_point[0] + i * 20, starting_point[1] + i * 20, color = (0, 255, 0) if i == 0 else (0, 0, 255)) for i in range(self.num_cars)]  # Position cars slightly apart
+        self.walls = get_walls()
+        # self.goals = getGoals()
 
-        self.car = Car(50, 300)
-        self.walls = getWalls()
-        self.goals = getGoals()
-        self.game_reward = 0
+    def step(self, actions):
+        """
+        Accept a list of actions, one for each car.
+        """
+        done = [False] * self.num_cars
+        rewards = [LIFE_REWARD] * self.num_cars
+        new_states = [None] * self.num_cars
 
-    def step(self, action):
+        for i, car in enumerate(self.cars):
+            car.action(actions[i])
+            car.update()
+            reward = LIFE_REWARD
 
-        done = False
-        self.car.action(action)
-        self.car.update()
-        reward = LIFE_REWARD
+            # Check if car passes Goal and scores
+            # index = 1
+            # for goal in self.goals:
+            #     if index > len(self.goals):
+            #         index = 1
+            #     if goal.isactiv:
+            #         if car.score(goal):
+            #             goal.isactiv = False
+            #             self.goals[index-2].isactiv = True
+            #             reward += GOALREWARD
 
-        # Check if car passes Goal and scores
-        index = 1
-        for goal in self.goals:
-            
-            if index > len(self.goals):
-                index = 1
-            if goal.isactiv:
-                if self.car.score(goal):
-                    goal.isactiv = False
-                    self.goals[index-2].isactiv = True
-                    reward += GOALREWARD
+            #     index = index + 1
 
-            index = index + 1
-
-        # Check if car crashed in the wall
-        for wall in self.walls:
-            if self.car.collision(wall):
+            # Check if car crashed in the wall
+            if car.collision_color(self.track_surface, self.cars):
                 reward += PENALTY
-                done = True
+                done[i] = True
+                car.velocity = 0
 
-        new_state = self.car.cast(self.walls)
-        # Normalize states
-        if done:
-            new_state = None
+            # Update state and reward for this car
+            new_states[i] = car.cast(self.walls)
+            rewards[i] = reward
 
-        return new_state, reward, done
+            # If done, set state to None
+            if done[i]:
+                new_states[i] = None
 
-    def render(self, action):
+        return new_states, rewards, done
 
+    def render(self, actions):
         DRAW_WALLS = False
-        DRAW_GOALS = True
+        DRAW_GOALS = False
         DRAW_RAYS = False
 
         pygame.time.delay(10)
 
         self.clock = pygame.time.Clock()
-        self.screen.fill((0, 0, 0))
-
-        self.screen.blit(self.back_image, self.back_rect)
+        self.screen.blit(self.track_surface, (0, 0))
 
         if DRAW_WALLS:
             for wall in self.walls:
                 wall.draw(self.screen)
         
-        if DRAW_GOALS:
-            for goal in self.goals:
-                goal.draw(self.screen)
-                if goal.isactiv:
-                    goal.draw(self.screen)
+        # if DRAW_GOALS:
+        #     for goal in self.goals:
+        #         goal.draw(self.screen)
+        #         if goal.isactiv:
+        #             goal.draw(self.screen)
         
-        self.car.draw(self.screen)
+        for i, car in enumerate(self.cars):
+            car.draw(self.screen)
 
-        if DRAW_RAYS:
-            i = 0
-            for pt in self.car.closestRays:
-                pygame.draw.circle(self.screen, (0,0,255), (pt.x, pt.y), 5)
-                i += 1
-                if i < 15:
-                    pygame.draw.line(self.screen, (255,255,255), (self.car.x, self.car.y), (pt.x, pt.y), 1)
-                elif i >=15 and i < 17:
-                    pygame.draw.line(self.screen, (255,255,255), ((self.car.p1.x + self.car.p2.x)/2, (self.car.p1.y + self.car.p2.y)/2), (pt.x, pt.y), 1)
-                elif i == 17:
-                    pygame.draw.line(self.screen, (255,255,255), (self.car.p1.x , self.car.p1.y ), (pt.x, pt.y), 1)
-                else:
-                    pygame.draw.line(self.screen, (255,255,255), (self.car.p2.x, self.car.p2.y), (pt.x, pt.y), 1)
+            if DRAW_RAYS:
+                for pt in car.closestRays:
+                    pygame.draw.circle(self.screen, (0, 0, 255), (pt.x, pt.y), 5)
+                    pygame.draw.line(self.screen, (255, 255, 255), (car.position.x, car.position.y), (pt.x, pt.y), 1)
 
-        #render controll
-        pygame.draw.rect(self.screen,(255,255,255),(800, 100, 40, 40),2)
-        pygame.draw.rect(self.screen,(255,255,255),(850, 100, 40, 40),2)
-        pygame.draw.rect(self.screen,(255,255,255),(900, 100, 40, 40),2)
-        pygame.draw.rect(self.screen,(255,255,255),(850, 50, 40, 40),2)
+            # Draw controls for each car
+            if i == 0:
+                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + i * 50, 100, 40, 40), 2)
+                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + 50 + i * 50, 100, 40, 40), 2)
+                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + 100 + i * 50, 100, 40, 40), 2)
+                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + 50 + i * 50, 50, 40, 40), 2)
 
-        if action == 4:
-            pygame.draw.rect(self.screen,(0,255,0),(850, 50, 40, 40)) 
-        elif action == 6:
-            pygame.draw.rect(self.screen,(0,255,0),(850, 50, 40, 40))
-            pygame.draw.rect(self.screen,(0,255,0),(800, 100, 40, 40))
-        elif action == 5:
-            pygame.draw.rect(self.screen,(0,255,0),(850, 50, 40, 40))
-            pygame.draw.rect(self.screen,(0,255,0),(900, 100, 40, 40))
-        elif action == 1:
-            pygame.draw.rect(self.screen,(0,255,0),(850, 100, 40, 40)) 
-        elif action == 8:
-            pygame.draw.rect(self.screen,(0,255,0),(850, 100, 40, 40))
-            pygame.draw.rect(self.screen,(0,255,0),(800, 100, 40, 40))
-        elif action == 7:
-            pygame.draw.rect(self.screen,(0,255,0),(850, 100, 40, 40))
-            pygame.draw.rect(self.screen,(0,255,0),(900, 100, 40, 40))
-        elif action == 2:
-            pygame.draw.rect(self.screen,(0,255,0),(800, 100, 40, 40))
-        elif action == 3:
-            pygame.draw.rect(self.screen,(0,255,0),(900, 100, 40, 40))
+                if actions[i] == 4:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 50, 40, 40)) 
+                elif actions[i] == 6:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 50, 40, 40))
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + i * 50, 100, 40, 40))
+                elif actions[i] == 5:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 50, 40, 40))
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 100 + i * 50, 100, 40, 40))
+                elif actions[i] == 1:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 100, 40, 40)) 
+                elif actions[i] == 8:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 100, 40, 40))
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + i * 50, 100, 40, 40))
+                elif actions[i] == 7:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 100, 40, 40))
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 100 + i * 50, 100, 40, 40))
+                elif actions[i] == 2:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + i * 50, 100, 40, 40))
+                elif actions[i] == 3:
+                    pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 100 + i * 50, 100, 40, 40))
 
-        # Score
-        text_surface = self.font.render(f'Points {self.car.points}', True, pygame.Color('green'))
-        self.screen.blit(text_surface, dest=(0, 0))
-        # Speed
-        text_surface = self.font.render(f'Speed {self.car.velocity*-1}', True, pygame.Color('green'))
-        self.screen.blit(text_surface, dest=(800, 0))
+                # Draw scores
+                text_surface = self.font.render(f'Car {i+1} Points: {car.points}', True, pygame.Color('green'))
+                self.screen.blit(text_surface, dest=(10, i * 40))
+                text_surface = self.font.render(f'Car {i+1} Speed: {car.velocity * -1}', True, pygame.Color('green'))
+                self.screen.blit(text_surface, dest=(control_start, i * 40))
 
         self.clock.tick(self.fps)
         pygame.display.update()
 
     def close(self):
         pygame.quit()
+
 
 
 
