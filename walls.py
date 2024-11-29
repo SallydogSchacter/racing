@@ -82,7 +82,4 @@ def get_walls():
     # Create wall objects from contour points
     walls_in = [Wall(x1, y1, x2, y2) for x1, y1, x2, y2 in load_contour(ins)]
     walls_out = [Wall(x1, y1, x2, y2) for x1, y1, x2, y2 in load_contour(outs)]
-    
-    walls_in = scale_wall(walls_out, walls_in, scale_factor=1.9)
-    walls_out = scale_wall(walls_in, walls_out, scale_factor=1.2)
     return walls_in + walls_out

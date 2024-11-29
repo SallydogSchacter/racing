@@ -1,21 +1,21 @@
 import pygame
 import math
-from Walls import get_walls
-from goals import getGoals
+from walls import get_walls
+from goals import get_goals
 from utils import Point, Line, Ray, distance, rotate, rotate_rect, line_intersection
 
 GOALREWARD = 10
 LIFE_REWARD = 1
 PENALTY = -10
 
-starting_point = (665, 320)
-control_start = 1300
+starting_point = (790, 155)
+control_start = 1100
 
 class Car:
     def __init__(self, x, y, color=(255, 0, 0)):
         self.position = Point(x, y)
-        self.width = 6
-        self.height = 15
+        self.width = 4
+        self.height = 10
         self.points = 0
         self.color = color
 
@@ -61,13 +61,16 @@ class Car:
         elif choice == 3:
             self.turn(1)
         elif choice == 4:
-            self.accelerate(-self.acceleration)
+            if self.velocity - self.acceleration >= 0:
+                self.accelerate(-self.acceleration)
         elif choice == 5:
-            self.accelerate(-self.acceleration)
-            self.turn(1)
+            if self.velocity - self.acceleration >= 0:
+                self.accelerate(-self.acceleration)
+                self.turn(1)
         elif choice == 6:
-            self.accelerate(-self.acceleration)
-            self.turn(-1)
+            if self.velocity - self.acceleration >= 0:
+                self.accelerate(-self.acceleration)
+                self.turn(-1)
         elif choice == 7:
             self.accelerate(self.acceleration)
             self.turn(-1)
@@ -93,7 +96,7 @@ class Car:
         self.update_corners()
 
 
-    def cast(self, walls):
+    def cast(self, walls, cars):
         """
         Cast rays from the car's position to detect distances to walls.
 
@@ -279,21 +282,20 @@ class RacingEnv:
         self.font = pygame.font.Font(pygame.font.get_default_font(), 36)
 
         self.fps = 120
-        self.width = 1600
-        self.height = 800
+        self.width = 1400
+        self.height = 700
 
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("RACING DQN")
-        self.track_surface = pygame.image.load("assets/yas_track.png").convert()
-        self.track_surface = pygame.transform.scale(self.track_surface, (self.width, self.height))
+        self.track_surface = pygame.image.load("assets/yas_track.jpg").convert()
 
         self.num_cars = num_cars
         self.reset()
 
     def reset(self):
-        self.cars = [Car(starting_point[0] + i * 20, starting_point[1] + i * 20, color = (0, 255, 0) if i == 0 else (0, 0, 255)) for i in range(self.num_cars)]  # Position cars slightly apart
+        self.cars = [Car(starting_point[0] + i * 15, starting_point[1] + i * 25, color = (0, 255, 0) if i == 0 else (0, 0, 255)) for i in range(self.num_cars)]  # Position cars slightly apart
         self.walls = get_walls()
-        # self.goals = getGoals()
+        self.goals = get_goals()
 
     def step(self, actions):
         """
@@ -309,17 +311,17 @@ class RacingEnv:
             reward = LIFE_REWARD
 
             # Check if car passes Goal and scores
-            # index = 1
-            # for goal in self.goals:
-            #     if index > len(self.goals):
-            #         index = 1
-            #     if goal.isactiv:
-            #         if car.score(goal):
-            #             goal.isactiv = False
-            #             self.goals[index-2].isactiv = True
-            #             reward += GOALREWARD
+            index = 1
+            for goal in self.goals:
+                if index > len(self.goals):
+                    index = 1
+                if goal.isactiv:
+                    if car.score(goal):
+                        goal.isactiv = False
+                        self.goals[index-2].isactiv = True
+                        reward += GOALREWARD
 
-            #     index = index + 1
+                index = index + 1
 
             # Check if car crashed in the wall
             if car.collision_color(self.track_surface, self.cars):
@@ -338,8 +340,8 @@ class RacingEnv:
         return new_states, rewards, done
 
     def render(self, actions):
-        DRAW_WALLS = False
-        DRAW_GOALS = False
+        DRAW_WALLS = True
+        DRAW_GOALS = True
         DRAW_RAYS = False
 
         pygame.time.delay(10)
@@ -351,11 +353,11 @@ class RacingEnv:
             for wall in self.walls:
                 wall.draw(self.screen)
         
-        # if DRAW_GOALS:
-        #     for goal in self.goals:
-        #         goal.draw(self.screen)
-        #         if goal.isactiv:
-        #             goal.draw(self.screen)
+        if DRAW_GOALS:
+            for goal in self.goals:
+                goal.draw(self.screen)
+                if goal.isactiv:
+                    goal.draw(self.screen)
         
         for i, car in enumerate(self.cars):
             car.draw(self.screen)
