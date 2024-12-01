@@ -5,11 +5,28 @@ class Point:
     def __init__(self, x, y):
         self.x = x
         self.y = y
+
         
 class Line:
     def __init__(self, pt1, pt2):
         self.pt1 = Point(pt1.x, pt1.y)
         self.pt2 = Point(pt2.x, pt2.y)
+    
+    @property
+    def x1(self):
+        return self.pt1.x
+
+    @property
+    def y1(self):
+        return self.pt1.y
+
+    @property
+    def x2(self):
+        return self.pt2.x
+
+    @property
+    def y2(self):
+        return self.pt2.y
         
 class Ray:
     def __init__(self, position, angle):

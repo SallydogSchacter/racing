@@ -4,8 +4,8 @@ from walls import get_walls
 from goals import get_goals
 from utils import Point, Line, Ray, distance, rotate, rotate_rect, line_intersection
 
-GOALREWARD = 10
-LIFE_REWARD = 1
+GOALREWARD = 20
+LIFE_REWARD = -11
 PENALTY = -10
 
 starting_point = (790, 155)
@@ -24,7 +24,7 @@ class Car:
         self.target_angle = self.angle
         self.velocity = 0
         self.max_velocity = 15
-        self.acceleration = 5
+        self.acceleration = 3
 
         # Define corners of the car
         self.update_corners()
@@ -98,13 +98,14 @@ class Car:
 
     def cast(self, walls, cars):
         """
-        Cast rays from the car's position to detect distances to walls.
+        Cast rays from the car's position to detect distances to walls and other cars.
 
         Args:
             walls: A list of wall objects to check for intersections.
+            cars: A list of car objects to check for intersections.
 
         Returns:
-            observations: A list of normalized distances from the car to the walls.
+            observations: A list of normalized distances from the car to obstacles.
         """
         # Define angles for the rays (relative to the car's target angle)
         angles = [
@@ -132,6 +133,8 @@ class Car:
         for ray in self.rays:
             closest = None
             record = math.inf
+
+            # Check intersections with walls
             for wall in walls:
                 pt = ray.cast(wall)
                 if pt:
@@ -140,6 +143,28 @@ class Car:
                         record = dist
                         closest = pt
 
+            # Check intersections with other cars
+            for other_car in cars:
+                if other_car == self:  # Skip self
+                    continue
+
+                # Get the edges of the other car as lines
+                other_car_lines = [
+                    Line(other_car.p1, other_car.p2),
+                    Line(other_car.p2, other_car.p3),
+                    Line(other_car.p3, other_car.p4),
+                    Line(other_car.p4, other_car.p1),
+                ]
+
+                for line in other_car_lines:
+                    pt = ray.cast(line)
+                    if pt:
+                        dist = distance(self.position, pt)
+                        if dist < record:
+                            record = dist
+                            closest = pt
+
+            # Record the closest intersection point and distance
             if closest:
                 self.closestRays.append(closest)
                 observations.append(record)
@@ -153,6 +178,7 @@ class Car:
         normalized_observations.append(self.velocity / self.max_velocity)
 
         return normalized_observations
+
 
 
     def collision(self, wall):
@@ -293,7 +319,7 @@ class RacingEnv:
         self.reset()
 
     def reset(self):
-        self.cars = [Car(starting_point[0] + i * 15, starting_point[1] + i * 25, color = (0, 255, 0) if i == 0 else (0, 0, 255)) for i in range(self.num_cars)]  # Position cars slightly apart
+        self.cars = [Car(starting_point[0] + i * 10, starting_point[1] + i * 25, color = (0, 255, 0) if i == 0 else (0, 0, 255)) for i in range(self.num_cars)]  # Position cars slightly apart
         self.walls = get_walls()
         self.goals = get_goals()
 
@@ -330,7 +356,7 @@ class RacingEnv:
                 car.velocity = 0
 
             # Update state and reward for this car
-            new_states[i] = car.cast(self.walls)
+            new_states[i] = car.cast(self.walls, self.cars)
             rewards[i] = reward
 
             # If done, set state to None
@@ -369,10 +395,10 @@ class RacingEnv:
 
             # Draw controls for each car
             if i == 0:
-                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + i * 50, 100, 40, 40), 2)
-                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + 50 + i * 50, 100, 40, 40), 2)
-                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + 100 + i * 50, 100, 40, 40), 2)
-                pygame.draw.rect(self.screen, (255, 255, 255), (control_start + 50 + i * 50, 50, 40, 40), 2)
+                pygame.draw.rect(self.screen, (0, 0, 0), (control_start + i * 50, 100, 40, 40), 2)
+                pygame.draw.rect(self.screen, (0, 0, 0), (control_start + 50 + i * 50, 100, 40, 40), 2)
+                pygame.draw.rect(self.screen, (0, 0, 0), (control_start + 100 + i * 50, 100, 40, 40), 2)
+                pygame.draw.rect(self.screen, (0, 0, 0), (control_start + 50 + i * 50, 50, 40, 40), 2)
 
                 if actions[i] == 4:
                     pygame.draw.rect(self.screen, (0, 255, 0), (control_start + 50 + i * 50, 50, 40, 40)) 

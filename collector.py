@@ -1,87 +1,110 @@
 import game_env
 import pygame
-from dqn import DQNAgent
 import numpy as np
+from dqn import DQNAgent
+import time  # Import the time module
 
 TOTAL_GAMETIME = 1000  # Max game time for one episode
 N_EPISODES = 10000
 REPLACE_TARGET = 50
+PENALTY = 100
+NUM_CARS = 1  # Number of cars in the environment
 
-game = game_env.RacingEnv()
-game.fps = 30
+game = game_env.RacingEnv(num_cars=NUM_CARS)
+game.fps = 120
 
 GameTime = 0
 GameHistory = []
 renderFlag = False
-
-dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilon_end=0.10, epsilon_dec=0.9995,
-                     replace_target=REPLACE_TARGET, batch_size=512, input_dims=19)
+dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilon_end=0.10, epsilon_dec=0.9995, replace_target=REPLACE_TARGET, batch_size=1024, input_dims=19)
 
 ddqn_scores = []
 eps_history = []
 
-
 def run():
-    output_file = "observations.txt"
-    file = open(output_file, "a")
     for e in range(N_EPISODES):
-        game.reset()  # reset env
+        game.reset()
 
-        done = False
-        score = 0
-        counter = 0
+        # Initialize car states
+        active_cars = [True] * NUM_CARS  # Track which cars are still active
+        scores = [0] * NUM_CARS  # Scores for all cars
+        counter = [0] * NUM_CARS  # Step counters for all cars
 
-        observation_, reward, done = game.step(0)
-        observation = np.array(observation_)
+        observations, rewards, dones = game.step([0] * NUM_CARS)  # Initial actions for all cars
+        prev_observations = [np.array(obs) if active_cars[i] else None for i, obs in enumerate(observations)]
 
-        gtime = 0  # set game time back to 0
+        gtime = 0  # Set game time back to 0
 
-        renderFlag = True  # if you want to render every episode set to true
-        while not done:
+        while any(active_cars):  # Run until all cars are done
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
+
             keys = pygame.key.get_pressed()
-            action = 0
+            actions = [0]
             # Map keys to actions
             if keys[pygame.K_w]:
-                action = 4
+                actions = [1]
             elif keys[pygame.K_a]:
-                action = 2
+                actions = [2]
             elif keys[pygame.K_s]:
-                action = 1
+                actions = [4]
             elif keys[pygame.K_d]:
-                action = 3
-            observation_, reward, done = game.step(action)
-            observation_ = np.array(observation_)
+                actions = [3]
+    
+            observations, rewards, dones = game.step(actions)
+            observations = [
+                np.array(observations[i]) if active_cars[i] else None for i in range(NUM_CARS)
+            ]
 
-            # This is a countdown if no reward is collected the car will be done within 100 ticks
-            if reward == 0:
-                counter += 1
-                if counter > 100:
-                    done = True
-            else:
-                counter = 0
+            # Update scores and counters for active cars
+            for i in range(NUM_CARS):
+                if not active_cars[i]:
+                    continue  # Skip cars that are no longer active
+                if dones[i]:  # If the car is done, it crashed
+                    active_cars[i] = False  # Mark car as inactive
+                elif rewards[i] == 0:
+                    counter[i] += 1
+                    if counter[i] > 100:  # If car is idle for too long
+                        scores[i] -= PENALTY
+                        active_cars[i] = False  # Mark car as inactive
+                else:
+                    counter[i] = 0
+                scores[i] += rewards[i]
 
-            score += reward
-            file.write(f"{observation}, {action}, {reward}, {observation_}, {int(done)}\n")
-            #dqn_agent.remember(observation, action, reward, observation_, int(done))
-            observation = observation_
-            #dqn_agent.learn()
+                remember_time = time.time()
+                dqn_agent.remember(
+                    prev_observations[i], actions[i], rewards[i], observations[i], int(dones[i])
+                )
+                dqn_agent.learn()
 
+            # Update the game time
             gtime += 1
 
+            # End the episode if the max time is reached
             if gtime >= TOTAL_GAMETIME:
-                done = True
+                break
 
-            if renderFlag:
-                game.render(action)
+            # Render the game
+            game.render(actions)
 
+        # Track epsilon and main car's score
         eps_history.append(dqn_agent.epsilon)
-        ddqn_scores.append(score)
+        ddqn_scores.append(scores[0])
         avg_score = np.mean(ddqn_scores[max(0, e - 100):(e + 1)])
+        
+        if e % 10 == 0 and e > 10:
+            dqn_agent.save_model("model_weights")
 
-    file.close()
+        
+        print('episode: ', e,'score: %.2f' % scores[0],
+              ' average score %.2f' % avg_score,
+              ' epsilon: ', dqn_agent.epsilon,
+              ' memory size', dqn_agent.memory.mem_cntr % dqn_agent.memory.mem_size)
 
+        # print(
+        #     f"Episode {e}: Max step time - {max_step} ({max_time:.4f} seconds)"
+        # )
 
 run()
+

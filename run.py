@@ -1,16 +1,20 @@
+import argparse
 import game_env
 import pygame
 import numpy as np
 from dqn import DQNAgent
 import time  # Import the time module
 
+# Command-line arguments
+parser = argparse.ArgumentParser(description="Racing DQN Training")
+parser.add_argument("--load_weights", action="store_true", help="Load previous weights")
+args = parser.parse_args()
+
 TOTAL_GAMETIME = 1000  # Max game time for one episode
 N_EPISODES = 10000
 REPLACE_TARGET = 50
-
 PENALTY = 100
-
-NUM_CARS = 3  # Number of cars in the environment
+NUM_CARS = 4  # Number of cars in the environment
 
 game = game_env.RacingEnv(num_cars=NUM_CARS)
 game.fps = 120
@@ -18,7 +22,17 @@ game.fps = 120
 GameTime = 0
 GameHistory = []
 renderFlag = False
-dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilon_end=0.10, epsilon_dec=0.9995, replace_target=REPLACE_TARGET, batch_size=512, input_dims=19)
+dqn_agent = DQNAgent(alpha=0.0005, gamma=0.99, n_actions=5, epsilon=1.00, epsilon_end=0.10, epsilon_dec=0.9995, replace_target=REPLACE_TARGET, batch_size=1024, input_dims=19)
+
+# Load weights if the argument is passed
+if args.load_weights:
+    try:
+        dqn_agent.load_model("model_weights")
+        print("Successfully loaded previous weights.")
+    except FileNotFoundError:
+        print("No previous weights found. Starting with random initialization.")
+
+
 ddqn_scores = []
 eps_history = []
 
